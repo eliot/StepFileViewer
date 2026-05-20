@@ -9,6 +9,7 @@ struct LoaderTests {
         failures += run("ASCII STL", { try testASCIISTL() })
         failures += run("STEP parser tokenize", { try testSTEPTokenize() })
         failures += run("STEP file end-to-end", { try testSTEPFull() })
+        failures += run("STEP solid via FreeCAD", { try testSTEPSolid() })
         failures += run("3MF quad", { try test3MFQuad() })
         failures += run("OBJ via ModelIO", { try testOBJ() })
         if failures > 0 {
@@ -72,6 +73,16 @@ struct LoaderTests {
         let r = try ModelLoader.load(url: URL(fileURLWithPath: "/tmp/tiny.step"))
         try expect(r.statistics.points == 4, "expected 4 points, got \(r.statistics.points)")
         try expect(r.statistics.lines == 4, "expected 4 edges, got \(r.statistics.lines)")
+    }
+
+    static func testSTEPSolid() throws {
+        // /tmp/block.step is a real B-Rep solid (box with a cylindrical hole).
+        // With FreeCAD installed it must come back as a tessellated mesh.
+        let r = try ModelLoader.load(url: URL(fileURLWithPath: "/tmp/block.step"))
+        try expect(r.statistics.triangles > 50,
+                   "expected a tessellated solid (>50 tris), got \(r.statistics.triangles)")
+        try expect(r.statistics.points == 0,
+                   "solid path should not emit a point cloud, got \(r.statistics.points)")
     }
 
     static func testOBJ() throws {

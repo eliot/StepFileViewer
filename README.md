@@ -1,4 +1,5 @@
 # STEP File Viewer
+![calibration cube step file preview in STEP File Viewer](preview.png)
 
 A basic native macOS app to previews 3D model files, like `.step` files.
 
@@ -11,16 +12,26 @@ Supported formats:
 | PLY    | ModelIO                                                            |
 | USDZ / USD / USDA / USDC | ModelIO                                          |
 | 3MF    | Custom: unzipped via `/usr/bin/unzip`, XML parsed with XMLParser   |
-| STEP / STP | **Wireframe preview only** — see caveat below                  |
+| STEP / STP | Solid mesh via FreeCAD; wireframe fallback — see below         |
 
-## STEP support caveat
+## STEP support
 
-True STEP rendering requires tessellating B-Rep geometry (parametric curves
-and surfaces), which realistically depends on OpenCASCADE. This viewer ships
-a minimal STEP parser that extracts `CARTESIAN_POINT`, `VERTEX_POINT`, and
-`EDGE_CURVE` entities and renders them as a point cloud plus straight-edge
-wireframe. Curved edges appear as chords. The HUD reports point and line
-counts. For full shaded STEP previews, integrate OpenCASCADE.
+STEP stores B-Rep geometry (parametric curves and surfaces) that must be
+tessellated into triangles before it can be shaded — which realistically
+requires OpenCASCADE.
+
+- **If FreeCAD is installed** (`/Applications/FreeCAD.app`), the app shells
+  out to its `freecadcmd` tool to tessellate the STEP file into a solid mesh
+  (FreeCAD bundles OpenCASCADE). This is the normal path and renders STEP
+  files as proper shaded solids. Tessellation deflection is scaled to the
+  model's size.
+- **If FreeCAD is not installed**, the app falls back to a wireframe preview:
+  a minimal parser extracts `CARTESIAN_POINT`, `VERTEX_POINT`, and
+  `EDGE_CURVE` entities and renders them as a point cloud plus straight-edge
+  wireframe. Curved edges appear as chords.
+
+Model loading runs off the main thread with a loading spinner, so the slower
+FreeCAD path never freezes the UI.
 
 ## Build & run
 
@@ -41,15 +52,23 @@ project — the Makefile drives `swiftc` against the sources in
 | Orbit camera          | Click + drag in viewport             |
 | Pan                   | Option + click + drag                |
 | Zoom                  | Two-finger scroll / pinch            |
-| Move window           | Click + drag in top 24 pt strip      |
+| Move window           | Drag the title bar                   |
 | Open file             | ⌘O, or drag-and-drop onto window     |
-| Close window          | ⌘W                                   |
+| Close window          | Close button, or ⌘W                  |
 | Quit                  | ⌘Q                                   |
 
-The window has no title bar, no traffic-light buttons, and no toolbar — only
-the 3D viewport and a small statistics HUD docked bottom-right. The top
-24 pt of the window is reserved as a transparent drag handle so the window
-can still be moved.
+The window has a standard macOS title bar (close / minimize / zoom buttons);
+the current filename is shown as the window title. Below it, the content area
+is a translucent light "Quick Look" background that the desktop blurs
+through, filled by the 3D viewport with a small statistics HUD docked
+bottom-right.
+
+## Object color
+
+A color well in the top-right of the viewport recolors every geometry
+material (the `diffuse` channel). The chosen color is persisted to
+`UserDefaults` as `objectColor.rgba` (four sRGB components) and restored on
+the next launch.
 
 ## Statistics HUD
 
@@ -63,20 +82,25 @@ Bottom-right overlay shows:
 - `meshes` — submesh count when > 1
 - `x`, `y`, `z` — bounding box dimensions in source units
 
+It also has a **wireframe** toggle button at the bottom of the HUD, which
+switches the viewport between solid shading and wireframe rendering
+(`SCNView.debugOptions = .renderAsWireframe`).
+
 ## Project layout
 
 ```
 Sources/STEPFileViewer/
-  App.swift              # @main, AppDelegate, NSWindow chrome stripping
+  App.swift              # @main, AppDelegate, NSWindow configuration
   ContentView.swift      # Root SwiftUI view — viewport + HUD + drop target
-  SceneViewport.swift    # SCNView wrapper with orbit camera + framing
+  SceneViewport.swift    # SCNView wrapper — orbit camera, color, wireframe
   ModelStore.swift       # Observable model state + file picker
   ModelLoader.swift      # Format dispatch + SCNGeometry builders
   ModelStatistics.swift  # Face / vertex / bounds accounting
-  StatisticsHUD.swift    # Bottom-right statistics overlay
+  StatisticsHUD.swift    # Bottom-right statistics overlay + wireframe toggle
   STLLoader.swift        # Binary + ASCII STL
   ThreeMFLoader.swift    # 3MF (ZIP + XML)
-  STEPLoader.swift       # ISO-10303-21 parser (wireframe-only)
+  STEPLoader.swift       # STEP: FreeCAD solid mesh, wireframe fallback
+  FreeCADBridge.swift    # Shells out to FreeCAD to tessellate STEP
 Tests/
   test_loaders.swift     # Standalone CLI test runner for loaders
 Resources/

@@ -12,11 +12,10 @@ struct STEPFileViewerApp: App {
             ContentView()
                 .environmentObject(modelStore)
                 .frame(minWidth: 640, minHeight: 480)
+                .navigationTitle(modelStore.fileName ?? "STEP File Viewer")
                 .background(WindowConfigurator())
                 .onAppear { appDelegate.modelStore = modelStore }
         }
-        .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { modelStore.openFilePicker() }
@@ -42,22 +41,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Reaches up to the hosting NSWindow and strips all chrome.
+/// Reaches up to the hosting NSWindow to keep the translucent backing while
+/// using a standard title bar.
 struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
             guard let window = view.window else { return }
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.styleMask.insert(.fullSizeContentView)
-            window.standardWindowButton(.closeButton)?.isHidden = true
-            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-            window.standardWindowButton(.zoomButton)?.isHidden = true
-            window.isMovableByWindowBackground = true
-            window.backgroundColor = NSColor.black
-            window.isOpaque = true
+            // Standard title bar with all window buttons; the window is moved
+            // by its title bar, NOT by background drag — otherwise clicks in
+            // the viewport would drag the window instead of orbiting.
+            window.isMovableByWindowBackground = false
+            window.backgroundColor = .clear
+            window.isOpaque = false
             window.hasShadow = true
+            // Force a light appearance so the frosted background reads as white
+            // regardless of the system's dark/light mode.
+            window.appearance = NSAppearance(named: .aqua)
         }
         return view
     }

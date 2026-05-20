@@ -46,6 +46,20 @@ enum ModelLoader {
         }
     }
 
+    /// Loads off the main thread so slow loaders (notably STEP, which shells
+    /// out to FreeCAD) do not block the UI.
+    static func loadAsync(url: URL) async throws -> ModelLoadResult {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    continuation.resume(returning: try ModelLoader.load(url: url))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     private static func loadViaModelIO(url: URL) throws -> ModelLoadResult {
         let asset = MDLAsset(url: url, vertexDescriptor: nil, bufferAllocator: nil)
         asset.loadTextures()
@@ -63,7 +77,7 @@ enum ModelLoader {
             if geom.materials.isEmpty || geom.firstMaterial?.diffuse.contents == nil {
                 let m = SCNMaterial()
                 m.lightingModel = .physicallyBased
-                m.diffuse.contents = NSColor(calibratedRed: 0.78, green: 0.80, blue: 0.85, alpha: 1.0)
+                m.diffuse.contents = NSColor(calibratedRed: 0.55, green: 0.57, blue: 0.62, alpha: 1.0)
                 m.metalness.contents = 0.15
                 m.roughness.contents = 0.45
                 m.isDoubleSided = true

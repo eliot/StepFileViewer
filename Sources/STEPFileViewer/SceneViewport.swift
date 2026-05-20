@@ -6,9 +6,9 @@ struct SceneViewport: NSViewRepresentable {
     @ObservedObject var store: ModelStore
 
     func makeNSView(context: Context) -> SCNView {
-        let view = ChromelessSCNView(frame: .zero)
+        let view = SCNView(frame: .zero)
         view.scene = store.scene
-        view.backgroundColor = NSColor.black
+        view.backgroundColor = .clear
         view.allowsCameraControl = true
         view.autoenablesDefaultLighting = true
         view.antialiasingMode = .multisampling4X
@@ -17,18 +17,31 @@ struct SceneViewport: NSViewRepresentable {
         view.defaultCameraController.interactionMode = .orbitTurntable
         view.defaultCameraController.inertiaEnabled = true
         view.showsStatistics = false
+        view.debugOptions = store.wireframe ? [.renderAsWireframe] : []
         context.coordinator.frameScene(view, scene: store.scene)
         context.coordinator.lastVersion = store.loadVersion
+        Coordinator.applyObjectColor(store.objectColor, to: store.scene)
+        context.coordinator.lastColor = store.objectColor
         return view
     }
 
     func updateNSView(_ nsView: SCNView, context: Context) {
+        let coord = context.coordinator
         if nsView.scene !== store.scene {
             nsView.scene = store.scene
         }
-        if context.coordinator.lastVersion != store.loadVersion {
-            context.coordinator.lastVersion = store.loadVersion
-            context.coordinator.frameScene(nsView, scene: store.scene)
+        let versionChanged = coord.lastVersion != store.loadVersion
+        if versionChanged {
+            coord.lastVersion = store.loadVersion
+            coord.frameScene(nsView, scene: store.scene)
+        }
+        if versionChanged || coord.lastColor != store.objectColor {
+            coord.lastColor = store.objectColor
+            Coordinator.applyObjectColor(store.objectColor, to: store.scene)
+        }
+        let wire: SCNDebugOptions = store.wireframe ? [.renderAsWireframe] : []
+        if nsView.debugOptions != wire {
+            nsView.debugOptions = wire
         }
     }
 
@@ -36,6 +49,18 @@ struct SceneViewport: NSViewRepresentable {
 
     final class Coordinator {
         var lastVersion: Int = -1
+        var lastColor: Color? = nil
+
+        /// Recolor every geometry material's diffuse channel.
+        static func applyObjectColor(_ color: Color, to scene: SCNScene) {
+            let ns = NSColor(color)
+            scene.rootNode.enumerateChildNodes { node, _ in
+                guard let geom = node.geometry else { return }
+                for material in geom.materials {
+                    material.diffuse.contents = ns
+                }
+            }
+        }
 
         /// Position a camera to frame the entire model and configure the orbit target.
         func frameScene(_ view: SCNView, scene: SCNScene) {
@@ -82,22 +107,5 @@ struct SceneViewport: NSViewRepresentable {
             view.defaultCameraController.target = center
             view.defaultCameraController.worldUp = SCNVector3(0, 1, 0)
         }
-    }
-}
-
-/// SCNView subclass that makes the top edge draggable for the (chrome-less) window
-/// while leaving the rest of the surface available for orbit/pan.
-final class ChromelessSCNView: SCNView {
-    // Top 24pt strip acts as a window-drag handle.
-    private let dragHandleHeight: CGFloat = 24
-
-    override var mouseDownCanMoveWindow: Bool { false }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        // Pass through clicks in the top drag area to the window for moving.
-        if point.y >= bounds.maxY - dragHandleHeight {
-            return nil
-        }
-        return super.hitTest(point)
     }
 }

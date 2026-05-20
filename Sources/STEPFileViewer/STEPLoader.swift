@@ -2,19 +2,36 @@ import Foundation
 import SceneKit
 import simd
 
-/// Best-effort STEP (ISO 10303-21) preview loader.
+/// STEP (ISO 10303-21) loader.
 ///
-/// Full STEP rendering requires tessellation of B-Rep geometry (curves +
-/// surfaces) which realistically needs OpenCASCADE. This loader instead
-/// extracts the parts of the file we can interpret directly:
+/// STEP stores B-Rep geometry (parametric curves + surfaces) that must be
+/// tessellated into triangles before it can be shaded. When FreeCAD is
+/// installed locally we shell out to it (FreeCAD bundles OpenCASCADE) to
+/// produce a real solid mesh.
+///
+/// When FreeCAD is unavailable, `loadWireframe` is used instead — it extracts
+/// only the parts of the file we can interpret directly:
 ///   • CARTESIAN_POINT entities — drawn as a point cloud
-///   • VERTEX_POINT and EDGE_CURVE pairs — drawn as a wireframe of straight
-///     edges (curved edges show their endpoints as a chord)
-///
-/// The result is a structural preview, not a shaded surface. The statistics
-/// HUD still reports vertex / line counts.
+///   • VERTEX_POINT and EDGE_CURVE pairs — drawn as a straight-edge wireframe
 enum STEPLoader {
     static func load(url: URL) throws -> ModelLoadResult {
+        // Prefer a true tessellated solid via FreeCAD / OpenCASCADE.
+        if FreeCADBridge.isAvailable {
+            if let solid = try? tessellatedSolid(url: url) {
+                return solid
+            }
+        }
+        // Fall back to the structural wireframe + point-cloud preview.
+        return try loadWireframe(url: url)
+    }
+
+    private static func tessellatedSolid(url: URL) throws -> ModelLoadResult {
+        let stlURL = try FreeCADBridge.tessellateToSTL(stepURL: url)
+        defer { try? FileManager.default.removeItem(at: stlURL) }
+        return try STLLoader.load(url: stlURL)
+    }
+
+    static func loadWireframe(url: URL) throws -> ModelLoadResult {
         let text: String
         if let raw = try? String(contentsOf: url, encoding: .utf8) {
             text = raw
@@ -90,8 +107,7 @@ enum STEPLoader {
             let lineGeom = ModelLoader.makeLineGeometry(vertices: lineVerts, indices: lineIdx)
             let mat = SCNMaterial()
             mat.lightingModel = .constant
-            mat.diffuse.contents = NSColor(calibratedRed: 0.85, green: 0.90, blue: 1.0, alpha: 1.0)
-            mat.emission.contents = NSColor(calibratedRed: 0.55, green: 0.70, blue: 0.95, alpha: 1.0)
+            mat.diffuse.contents = NSColor(calibratedRed: 0.16, green: 0.40, blue: 0.80, alpha: 1.0)
             lineGeom.materials = [mat]
             scene.rootNode.addChildNode(SCNNode(geometry: lineGeom))
         }
@@ -100,8 +116,7 @@ enum STEPLoader {
         let ptGeom = ModelLoader.makePointGeometry(vertices: allPoints)
         let pmat = SCNMaterial()
         pmat.lightingModel = .constant
-        pmat.diffuse.contents = NSColor.white
-        pmat.emission.contents = NSColor.white
+        pmat.diffuse.contents = NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1.0)
         ptGeom.materials = [pmat]
         scene.rootNode.addChildNode(SCNNode(geometry: ptGeom))
 
