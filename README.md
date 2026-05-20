@@ -1,7 +1,6 @@
 # STEP File Viewer
 
-A chrome-less native macOS app that previews 3D model files in a single
-SceneKit viewport. Drag a file in, or press ⌘O.
+A basic native macOS app to previews 3D model files, like `.step` files.
 
 Supported formats:
 
