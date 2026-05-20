@@ -1,6 +1,10 @@
 import Foundation
 
-// Standalone test runner. Compiled with the same loader sources.
+// Standalone test runner for the model loaders. Compiled with the loader
+// sources (see the `test` target in the Makefile).
+//
+// Fixtures live in `Tests/fixtures/`. The directory can be overridden by
+// passing it as the first argument: `loader_tests path/to/fixtures`.
 @main
 struct LoaderTests {
     static func main() {
@@ -19,20 +23,36 @@ struct LoaderTests {
         print("All tests passed.")
     }
 
+    // MARK: - Fixtures
+
+    static var fixturesDir: String {
+        CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "Tests/fixtures"
+    }
+
+    static func fixture(_ name: String) -> URL {
+        URL(fileURLWithPath: fixturesDir).appendingPathComponent(name)
+    }
+
+    // MARK: - Runner
+
     static func run(_ name: String, _ body: () throws -> Void) -> Int {
         do {
             try body()
-            print("  ok   \(name)")
+            print("  ok    \(name)")
+            return 0
+        } catch let skip as SkipTest {
+            print("  skip  \(name) — \(skip.reason)")
             return 0
         } catch {
-            print("  FAIL \(name): \(error)")
+            print("  FAIL  \(name): \(error)")
             return 1
         }
     }
 
+    // MARK: - Tests
+
     static func testBinarySTL() throws {
-        let url = URL(fileURLWithPath: "/tmp/cube.stl")
-        let r = try ModelLoader.load(url: url)
+        let r = try ModelLoader.load(url: fixture("cube.stl"))
         try expect(r.statistics.triangles == 12, "expected 12 tris, got \(r.statistics.triangles)")
         try expect(r.statistics.vertices == 36, "expected 36 verts, got \(r.statistics.vertices)")
         let sx = r.statistics.sizeX
@@ -40,8 +60,7 @@ struct LoaderTests {
     }
 
     static func testASCIISTL() throws {
-        let url = URL(fileURLWithPath: "/tmp/cube_ascii.stl")
-        let r = try ModelLoader.load(url: url)
+        let r = try ModelLoader.load(url: fixture("cube_ascii.stl"))
         try expect(r.statistics.triangles == 2, "expected 2 tris, got \(r.statistics.triangles)")
         try expect(r.statistics.vertices == 6, "expected 6 verts, got \(r.statistics.vertices)")
     }
@@ -70,15 +89,19 @@ struct LoaderTests {
     }
 
     static func testSTEPFull() throws {
-        let r = try ModelLoader.load(url: URL(fileURLWithPath: "/tmp/tiny.step"))
+        // tiny.step has no faces, so it always resolves to the wireframe path.
+        let r = try ModelLoader.load(url: fixture("tiny.step"))
         try expect(r.statistics.points == 4, "expected 4 points, got \(r.statistics.points)")
         try expect(r.statistics.lines == 4, "expected 4 edges, got \(r.statistics.lines)")
     }
 
     static func testSTEPSolid() throws {
-        // /tmp/block.step is a real B-Rep solid (box with a cylindrical hole).
-        // With FreeCAD installed it must come back as a tessellated mesh.
-        let r = try ModelLoader.load(url: URL(fileURLWithPath: "/tmp/block.step"))
+        // block.step is a real B-Rep solid (box with a cylindrical hole).
+        // It can only be tessellated when FreeCAD is installed.
+        guard FreeCADBridge.isAvailable else {
+            throw SkipTest("FreeCAD not installed")
+        }
+        let r = try ModelLoader.load(url: fixture("block.step"))
         try expect(r.statistics.triangles > 50,
                    "expected a tessellated solid (>50 tris), got \(r.statistics.triangles)")
         try expect(r.statistics.points == 0,
@@ -86,13 +109,13 @@ struct LoaderTests {
     }
 
     static func testOBJ() throws {
-        let r = try ModelLoader.load(url: URL(fileURLWithPath: "/tmp/tri.obj"))
+        let r = try ModelLoader.load(url: fixture("tri.obj"))
         try expect(r.statistics.triangles >= 1, "expected ≥1 triangle, got \(r.statistics.triangles)")
         try expect(r.statistics.vertices >= 3, "expected ≥3 vertices, got \(r.statistics.vertices)")
     }
 
     static func test3MFQuad() throws {
-        let r = try ModelLoader.load(url: URL(fileURLWithPath: "/tmp/quad.3mf"))
+        let r = try ModelLoader.load(url: fixture("quad.3mf"))
         try expect(r.statistics.triangles == 2, "expected 2 tris, got \(r.statistics.triangles)")
         try expect(r.statistics.vertices == 4, "expected 4 verts, got \(r.statistics.vertices)")
         // The model is a 10×10 quad in the XY plane.
@@ -104,6 +127,12 @@ struct LoaderTests {
 struct TestError: Error, CustomStringConvertible {
     let description: String
     init(_ msg: String) { self.description = msg }
+}
+
+/// Thrown by a test to mark itself skipped rather than failed.
+struct SkipTest: Error {
+    let reason: String
+    init(_ reason: String) { self.reason = reason }
 }
 
 func expect(_ cond: Bool, _ msg: @autoclosure () -> String) throws {

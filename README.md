@@ -103,26 +103,32 @@ Sources/STEPFileViewer/
   FreeCADBridge.swift    # Shells out to FreeCAD to tessellate STEP
 Tests/
   test_loaders.swift     # Standalone CLI test runner for loaders
+  fixtures/              # Committed sample model files for the tests
 Resources/
   Info.plist             # Bundle metadata + document type associations
-Makefile                 # swiftc → .app bundle + codesign
+.github/workflows/
+  ci.yml                 # Build + test + artifact upload on macOS
+Makefile                 # swiftc → .app bundle + codesign; `make test`
 ```
 
 ## Running the loader tests
 
 ```
-swiftc -parse-as-library -o build/loader_tests \
-  -framework AppKit -framework SceneKit -framework ModelIO -framework UniformTypeIdentifiers \
-  Sources/STEPFileViewer/ModelLoader.swift \
-  Sources/STEPFileViewer/ModelStatistics.swift \
-  Sources/STEPFileViewer/STLLoader.swift \
-  Sources/STEPFileViewer/ThreeMFLoader.swift \
-  Sources/STEPFileViewer/STEPLoader.swift \
-  Tests/test_loaders.swift
-./build/loader_tests
+make test
 ```
 
-The test runner expects sample files at `/tmp/cube.stl`,
-`/tmp/cube_ascii.stl`, `/tmp/tri.obj`, `/tmp/quad.3mf`, `/tmp/tiny.step` —
-the build helpers in the original session generate these from a few lines
-of Python and `cat << EOF`.
+This compiles the non-UI loader sources together with `Tests/test_loaders.swift`
+into a small CLI runner and executes it against the committed sample files in
+`Tests/fixtures/` (`cube.stl`, `cube_ascii.stl`, `tri.obj`, `quad.3mf`,
+`tiny.step`, `block.step`). The "STEP solid via FreeCAD" test self-skips when
+FreeCAD is not installed.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, on pull requests,
+and on manual dispatch. On a `macos-latest` runner it:
+
+1. builds the app with `make`,
+2. runs the loader tests with `make test` (the STEP-solid test skips, since
+   FreeCAD is not on the runner),
+3. uploads the built `STEP File Viewer.app` as a workflow artifact.

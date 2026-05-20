@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain versions
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Build app
+        run: make
+
+      - name: Run loader tests
+        # The STEP-solid test self-skips when FreeCAD is absent (it is not
+        # installed on the runner), so this exercises every other loader.
+        run: make test
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: STEP-File-Viewer-app
+          path: "build/STEP File Viewer.app"
+          if-no-files-found: error
